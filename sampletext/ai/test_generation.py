@@ -1,8 +1,9 @@
 import json
 from copy import deepcopy
-from io import BytesIO
-from unittest.mock import MagicMock, patch
-from urllib.error import HTTPError, URLError
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from google.genai import errors
 
 from django.test import SimpleTestCase, override_settings
 from django.urls import reverse
@@ -12,8 +13,8 @@ from rest_framework.exceptions import Throttled
 from ..models import ConteudoGerado, Pergunta, TokenUsuario, Usuario
 from ..prompts.tema import montar_mensagens_tema, obter_schema_tema
 from .client import ClienteIA
-from .errors import ErroIA
-from .validation import ler_json, validar_conteudo, validar_resultado_tema
+from sampletext.ai.errors import ErroIA
+from sampletext.ai.validation import ler_json, validar_conteudo, validar_resultado_tema
 
 
 TEMA = "Regra da potência"
@@ -41,12 +42,7 @@ def classificacao(status="ok", tema=TEMA):
 
 
 def resposta_provedor(dados):
-    resposta = MagicMock()
-    resposta.__enter__.return_value = resposta
-    resposta.read.return_value = json.dumps({"status": "completed", "output": [
-        {"type": "message", "content": [{"type": "output_text", "text": json.dumps(dados, ensure_ascii=False)}]},
-    ]}).encode("utf-8")
-    return resposta
+    return SimpleNamespace(text=json.dumps(dados, ensure_ascii=False), candidates=[], prompt_feedback=None)
 
 
 class ValidacaoTests(SimpleTestCase):
@@ -91,37 +87,42 @@ class ValidacaoTests(SimpleTestCase):
         self.assertEqual(obter_schema_tema()["properties"]["status"]["enum"], ["ok", "amplo", "invalido"])
 
 
-@override_settings(AI_API_KEY="chave-teste", AI_MODEL="gpt-4.1-mini", AI_TIMEOUT_SECONDS=3)
+@override_settings(GEMINI_API_KEY="chave-teste", GEMINI_MODEL="gemini-3.8-flash", AI_TIMEOUT_SECONDS=3)
 class ClienteTests(SimpleTestCase):
-    @patch("sampletext.ai.client.urlopen")
-    def test_envia_schema_modelo_e_timeout_sem_armazenar_resposta(self, rede):
+    @patch("sampletext.ai.client._chamar_gemini")
+    def test_envia_schema_modelo_e_timeout(self, rede):
         rede.return_value = resposta_provedor(classificacao())
         resultado = ClienteIA().gerar_json(montar_mensagens_tema(TEMA), obter_schema_tema(), "tema", 512)
         self.assertEqual(json.loads(resultado), classificacao())
-        pedido = rede.call_args.args[0]
-        payload = json.loads(pedido.data)
-        self.assertEqual(pedido.full_url, "https://api.openai.com/v1/responses")
-        self.assertEqual(pedido.get_header("Authorization"), "Bearer chave-teste")
-        self.assertEqual(payload["model"], "gpt-4.1-mini")
-        self.assertTrue(payload["text"]["format"]["strict"])
-        self.assertFalse(payload["store"])
-        self.assertEqual(rede.call_args.kwargs["timeout"], 3)
+        chamada = rede.call_args.kwargs
+        self.assertEqual(chamada["chave"], "chave-teste")
+        self.assertEqual(chamada["modelo"], "gemini-3.8-flash")
+        self.assertEqual(chamada["max_tokens"], 512)
+        self.assertEqual(chamada["timeout_segundos"], 3)
+        self.assertEqual(chamada["mensagens"], montar_mensagens_tema(TEMA))
+        self.assertEqual(chamada["schema"]["properties"]["status"]["enum"], ["ok", "amplo", "invalido"])
 
-    @override_settings(AI_API_KEY="")
-    @patch("sampletext.ai.client.urlopen")
+    @override_settings(GEMINI_API_KEY="")
+    @patch("sampletext.ai.client._chamar_gemini")
     def test_sem_chave_nao_chama_rede(self, rede):
         with self.assertRaises(ErroIA) as erro:
             ClienteIA().gerar_json([], {}, "tema", 512)
         self.assertEqual(erro.exception.status, 503)
         rede.assert_not_called()
 
-    @patch("sampletext.ai.client.urlopen")
+    @patch("sampletext.ai.client._chamar_gemini")
     def test_erros_externos_nao_expoem_corpo_ou_chave(self, rede):
+        class ErroGemini(errors.APIError):
+            def __init__(self, code):
+                self.code = code
+                Exception.__init__(self, "segredo")
+
         for causa, status, codigo in (
-            (HTTPError("url", 401, "segredo", {}, BytesIO(b"segredo")), 503, "ia_configuracao"),
-            (HTTPError("url", 429, "segredo", {}, BytesIO()), 503, "ia_limite"),
-            (HTTPError("url", 500, "segredo", {}, BytesIO()), 502, "ia_indisponivel"),
-            (TimeoutError(), 504, "ia_timeout"), (URLError("segredo"), 503, "ia_conexao"),
+            (ErroGemini(403), 503, "ia_configuracao"),
+            (ErroGemini(429), 503, "ia_limite"),
+            (ErroGemini(500), 502, "ia_indisponivel"),
+            (TimeoutError("segredo"), 504, "ia_timeout"),
+            (ConnectionError("segredo"), 503, "ia_conexao"),
         ):
             rede.side_effect = causa
             with self.subTest(codigo=codigo), self.assertRaises(ErroIA) as erro:
@@ -130,20 +131,26 @@ class ClienteTests(SimpleTestCase):
             self.assertNotIn("segredo", str(erro.exception))
 
     def test_recusa_truncamento_e_envelopes_incompletos(self):
-        for dados in ([], {}, {"status": "incomplete"}, {"status": "completed", "output": []},
-                      {"status": "completed", "output": [{"type": "message", "content": [{"type": "refusal"}]}]}):
-            with self.subTest(dados=dados), self.assertRaises(ErroIA):
-                ClienteIA._extrair_texto(dados)
+        respostas_invalidas = (
+            None,
+            SimpleNamespace(text="", candidates=[], prompt_feedback=None),
+            SimpleNamespace(text=None, candidates=[], prompt_feedback=None),
+            SimpleNamespace(text=None, candidates=[SimpleNamespace(finish_reason="MAX_TOKENS")], prompt_feedback=None),
+            SimpleNamespace(text=None, candidates=[], prompt_feedback=SimpleNamespace(block_reason="SAFETY")),
+        )
+        for resposta in respostas_invalidas:
+            with self.subTest(resposta=resposta), self.assertRaises(ErroIA):
+                ClienteIA._extrair_texto(resposta)
 
 
-@override_settings(AI_API_KEY="chave-teste")
+@override_settings(GEMINI_API_KEY="chave-teste")
 class EndpointsTests(APITestCase):
     def setUp(self):
         self.usuario = Usuario.objects.create(nome="Matheus")
         self.token = TokenUsuario.objects.create(usuario=self.usuario)
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
 
-    @patch("sampletext.ai.client.urlopen")
+    @patch("sampletext.ai.client._chamar_gemini")
     def test_geracao_completa_com_provedor_simulado_e_cache(self, rede):
         rede.side_effect = [resposta_provedor(classificacao()), resposta_provedor(material())]
         resposta = self.client.post(reverse("gerar-conteudo"), {"tema": f"  {TEMA}  "}, format="json")
@@ -154,7 +161,7 @@ class EndpointsTests(APITestCase):
         self.assertEqual(ConteudoGerado.objects.count(), 1)
 
     @patch("sampletext.content_views.verificar_limite_ia")
-    @patch("sampletext.ai.client.urlopen")
+    @patch("sampletext.ai.client._chamar_gemini")
     def test_reutiliza_cache_sem_chamar_ia_ou_gastar_cota(self, rede, limite):
         rede.side_effect = [resposta_provedor(classificacao()), resposta_provedor(material())]
         rota = reverse("gerar-conteudo")
@@ -171,7 +178,7 @@ class EndpointsTests(APITestCase):
         limite.assert_not_called()
 
     @patch("sampletext.content_views.verificar_limite_ia", side_effect=Throttled(wait=10))
-    @patch("sampletext.ai.client.urlopen")
+    @patch("sampletext.ai.client._chamar_gemini")
     def test_cota_bloqueia_chamadas_novas_antes_de_acessar_provedor(self, rede, limite):
         for rota in ("validar-tema", "gerar-conteudo"):
             resposta = self.client.post(reverse(rota), {"tema": TEMA}, format="json")
@@ -179,7 +186,7 @@ class EndpointsTests(APITestCase):
             self.assertEqual(resposta.data["retry_after"], 10)
         rede.assert_not_called()
 
-    @patch("sampletext.ai.client.urlopen")
+    @patch("sampletext.ai.client._chamar_gemini")
     def test_validacao_compativel_com_estados_da_busca(self, rede):
         for status in ("ok", "amplo", "invalido"):
             rede.return_value = resposta_provedor(classificacao(status))
@@ -187,7 +194,7 @@ class EndpointsTests(APITestCase):
             self.assertEqual(resposta.status_code, 200)
             self.assertEqual(resposta.data["status"], status)
 
-    @patch("sampletext.ai.client.urlopen")
+    @patch("sampletext.ai.client._chamar_gemini")
     def test_tema_inadequado_nao_dispara_geracao(self, rede):
         for status in ("amplo", "invalido"):
             rede.reset_mock()
@@ -196,7 +203,7 @@ class EndpointsTests(APITestCase):
             self.assertEqual(resposta.status_code, 422)
             self.assertEqual(rede.call_count, 1)
 
-    @patch("sampletext.ai.client.urlopen")
+    @patch("sampletext.ai.client._chamar_gemini")
     def test_entrada_invalida_ou_sem_autenticacao_nao_chama_ia(self, rede):
         for rota in ("validar-tema", "gerar-conteudo"):
             for entrada in ({}, {"tema": None}, {"tema": 123}, {"tema": " "}, {"tema": "x" * 256}):
@@ -206,7 +213,7 @@ class EndpointsTests(APITestCase):
             self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")
         rede.assert_not_called()
 
-    @patch("sampletext.ai.client.urlopen")
+    @patch("sampletext.ai.client._chamar_gemini")
     def test_material_invalido_retorna_erro_padronizado(self, rede):
         ruim = deepcopy(material())
         ruim["perguntas"][0]["answers"].pop()
@@ -216,7 +223,7 @@ class EndpointsTests(APITestCase):
         self.assertEqual(resposta.data["code"], "ia_json_invalido")
         self.assertFalse(ConteudoGerado.objects.exists())
 
-    @override_settings(AI_API_KEY="")
+    @override_settings(GEMINI_API_KEY="")
     def test_configuracao_ausente_retorna_503(self):
         resposta = self.client.post(reverse("validar-tema"), {"tema": TEMA}, format="json")
         self.assertEqual(resposta.status_code, 503)
