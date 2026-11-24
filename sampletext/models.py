@@ -53,6 +53,66 @@ class TokenUsuario(models.Model):
         return f"Token de {self.usuario}"
 
 
+class Livro(models.Model):
+    """Coleção de conteúdos de um usuário (ex.: "Cálculo I")."""
+
+    usuario = models.ForeignKey(Usuario, related_name="livros", on_delete=models.CASCADE)
+    nome = models.CharField(max_length=100)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["criado_em", "id"]
+        constraints = [
+            # Cada usuário tem no máximo um livro por nome, ignorando maiúsculas/minúsculas.
+            models.UniqueConstraint(Lower("nome"), "usuario", name="livro_nome_unico_por_usuario"),
+        ]
+
+    def __str__(self):
+        return self.nome
+
+    def clean(self):
+        super().clean()
+        if isinstance(self.nome, str) and not self.nome.strip():
+            raise ValidationError({"nome": "Este campo não pode conter apenas espaços."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class Conteudo(models.Model):
+    """Resumo de um tema salvo em um livro. Excluir o livro exclui seus conteúdos."""
+
+    usuario = models.ForeignKey(Usuario, related_name="conteudos", on_delete=models.CASCADE)
+    livro = models.ForeignKey(Livro, related_name="conteudos", on_delete=models.CASCADE)
+    tema = models.CharField(max_length=255)
+    resumo = models.TextField()  # Markdown com LaTeX
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["criado_em", "id"]
+
+    def __str__(self):
+        return self.tema
+
+    def clean(self):
+        super().clean()
+        erros = {}
+        for campo in ("tema", "resumo"):
+            valor = getattr(self, campo)
+            if isinstance(valor, str) and not valor.strip():
+                erros[campo] = "Este campo não pode conter apenas espaços."
+        # O livro precisa ser do mesmo usuário: é isso que impede "mover" para o livro de outra pessoa.
+        if self.livro_id and self.usuario_id and self.livro.usuario_id != self.usuario_id:
+            erros["livro"] = "O livro precisa pertencer ao mesmo usuário."
+        if erros:
+            raise ValidationError(erros)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
 ALTERNATIVAS = [(letra, letra.upper()) for letra in "abcd"]
 
 
@@ -63,6 +123,10 @@ class Pergunta(models.Model):
     enunciado = models.TextField()
     alternativas = models.JSONField(validators=[validar_alternativas])
     resposta_correta = models.CharField(max_length=1, choices=ALTERNATIVAS)
+    # Conteúdo de origem. Opcional: perguntas antigas ou ainda não salvas não têm conteúdo.
+    conteudo = models.ForeignKey(
+        Conteudo, related_name="perguntas", null=True, blank=True, on_delete=models.CASCADE
+    )
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:
