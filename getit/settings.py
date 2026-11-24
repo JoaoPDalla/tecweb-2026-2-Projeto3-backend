@@ -158,7 +158,11 @@ REST_FRAMEWORK = {
 
 
 # CORS: endereços do front (React) que podem chamar esta API
-CORS_ALLOWED_ORIGINS = ['*']
+CORS_ALLOWED_ORIGINS = [
+    o.strip() for o in os.getenv(
+        "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+    ).split(",") if o.strip()
+]
 
 # Chave da API de IA (lida do .env; nunca escreva a chave no código)
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
