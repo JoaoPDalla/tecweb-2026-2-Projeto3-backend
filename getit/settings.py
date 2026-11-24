@@ -34,7 +34,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-#e5&f9667n*i)eklwec@f5x7jy
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['tecweb-2026-2-projeto3-backend-5gdz.onrender.com', 'localhost', '127.0.0.1', '0.0.0.0']
 
 
 # Application definition
@@ -160,7 +160,7 @@ REST_FRAMEWORK = {
 # CORS: endereços do front (React) que podem chamar esta API
 CORS_ALLOWED_ORIGINS = [
     o.strip() for o in os.getenv(
-        "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+        "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,https://tecweb-2026-2-projeto3-frontend-8mg5.onrender.com"
     ).split(",") if o.strip()
 ]
 
