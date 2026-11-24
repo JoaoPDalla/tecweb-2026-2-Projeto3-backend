@@ -1,5 +1,8 @@
 # Modelos e prompt de estudo — Ma7zz (#5 e #10)
 
+O fluxo de geração, os endpoints e a validação implementados posteriormente nas
+issues #12–#15 estão documentados em [Geração de material](ia.md).
+
 ## Escopo
 
 - #5: `Pergunta`, `Resposta`, validação dos campos e migração.
