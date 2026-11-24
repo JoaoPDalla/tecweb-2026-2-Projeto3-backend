@@ -1,5 +1,9 @@
 # Livros, Conteúdos e Respostas — #2, #9 e #20
 
+Complemento atual: o salvamento aceita perguntas e as respostas podem usar uma
+chave de reenvio. Veja [persistência do quiz](persistencia-quiz.md) para os campos
+opcionais, a migração e o comportamento compatível com clientes anteriores.
+
 Todas as rotas exigem `Authorization: Token <chave>` (a chave vem do login) e só enxergam
 os dados do usuário logado. Itens de outro usuário respondem 404, como se não existissem.
 

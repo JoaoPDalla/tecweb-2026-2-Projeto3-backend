@@ -7,6 +7,7 @@ from .ai import services
 from .ai.errors import ErroIA
 from .cache_conteudo import obter_ou_gerar
 from .throttling import verificar_limite_ia
+from .quiz_persistence import perguntas_da_geracao
 
 
 class TemaSerializer(serializers.Serializer):
@@ -53,4 +54,4 @@ class GerarConteudoView(ConteudoIAView):
             tema, gerador=self.operacao,
             antes_de_gerar=lambda: verificar_limite_ia(request, self),
         )
-        return resultado
+        return perguntas_da_geracao(resultado)

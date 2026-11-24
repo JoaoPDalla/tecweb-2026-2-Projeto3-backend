@@ -3,7 +3,7 @@ from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from google.genai import errors
+from google.genai import errors, types
 
 from django.test import SimpleTestCase, override_settings
 from django.urls import reverse
@@ -43,6 +43,13 @@ def classificacao(status="ok", tema=TEMA):
 
 def resposta_provedor(dados):
     return SimpleNamespace(text=json.dumps(dados, ensure_ascii=False), candidates=[], prompt_feedback=None)
+
+
+def resposta_sdk(dados):
+    return types.GenerateContentResponse(candidates=[{
+        "content": {"role": "model", "parts": [{"text": json.dumps(dados, ensure_ascii=False)}]},
+        "finish_reason": "STOP",
+    }])
 
 
 class ValidacaoTests(SimpleTestCase):
@@ -155,9 +162,12 @@ class EndpointsTests(APITestCase):
         rede.side_effect = [resposta_provedor(classificacao()), resposta_provedor(material())]
         resposta = self.client.post(reverse("gerar-conteudo"), {"tema": f"  {TEMA}  "}, format="json")
         self.assertEqual(resposta.status_code, 200)
-        self.assertEqual(resposta.data, material())
+        self.assertEqual(resposta.data["resumo"], material()["resumo"])
+        for recebida, original in zip(resposta.data["perguntas"], material()["perguntas"]):
+            self.assertTrue(recebida["id"].isdigit())
+            self.assertEqual({**recebida, "id": original["id"]}, original)
         self.assertEqual(rede.call_count, 2)
-        self.assertEqual(Pergunta.objects.count(), 0)
+        self.assertEqual(Pergunta.objects.count(), 10)
         self.assertEqual(ConteudoGerado.objects.count(), 1)
 
     @patch("sampletext.content_views.verificar_limite_ia")

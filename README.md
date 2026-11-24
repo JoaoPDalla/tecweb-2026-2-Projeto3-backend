@@ -1,5 +1,9 @@
 # tecweb-2026-2-Projeto3-backend
 
+A integração de perguntas salvas e histórico está descrita em
+[persistência do quiz](docs/persistencia-quiz.md). Após atualizar, execute
+`python manage.py migrate` antes de iniciar o servidor.
+
 ## Membros
 #### - Matheus Castro Picin
 #### - João Pedro Dalla
