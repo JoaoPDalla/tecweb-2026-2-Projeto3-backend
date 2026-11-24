@@ -163,8 +163,8 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 # Chave da API de IA (lida do .env; nunca escreva a chave no código)
-AI_API_KEY = os.getenv('AI_API_KEY', '')
-AI_MODEL = os.getenv('AI_MODEL', 'gpt-4.1-mini')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.8-flash')
 AI_TIMEOUT_SECONDS = float(os.getenv('AI_TIMEOUT_SECONDS', '45'))
 AI_MAX_OUTPUT_TOKENS = int(os.getenv('AI_MAX_OUTPUT_TOKENS', '8000'))
 
