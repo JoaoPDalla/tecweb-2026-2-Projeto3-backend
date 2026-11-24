@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 import os
 import sys
 from pathlib import Path
+import dj_database_url
 
 from dotenv import load_dotenv
 
@@ -31,9 +32,9 @@ load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-#e5&f9667n*i)eklwec@f5x7jyml8h)(w$7quvwo-#10mi+bwj')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True').lower() in ('1', 'true', 'yes')
+DEBUG = False
 
-ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', '').split(',') if h.strip()]
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -85,10 +86,11 @@ WSGI_APPLICATION = 'getit.wsgi.application'
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default='postgresql://projeto3_pn62_user:F4MWMvUiA2rUC1Kewy0vZoAt4lkf5wOl@dpg-dc2o4rei0phs73be1pg0-a.oregon-postgres.render.com/projeto3_pn62',
+        conn_max_age=600,
+        ssl_require=not DEBUG
+    )
 }
 
 
@@ -156,11 +158,7 @@ REST_FRAMEWORK = {
 
 
 # CORS: endereços do front (React) que podem chamar esta API
-CORS_ALLOWED_ORIGINS = [
-    o.strip()
-    for o in os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
-    if o.strip()
-]
+CORS_ALLOWED_ORIGINS = ['*']
 
 # Chave da API de IA (lida do .env; nunca escreva a chave no código)
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
