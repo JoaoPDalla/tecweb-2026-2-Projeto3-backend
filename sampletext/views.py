@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from .authentication import TokenUsuarioAuthentication
 from .models import TokenUsuario, Usuario
 from .serializers import LoginSerializer, UsuarioSerializer
+from .throttling import LimiteLogin
 
 
 class LoginView(APIView):
@@ -18,6 +19,7 @@ class LoginView(APIView):
 
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [LimiteLogin]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)

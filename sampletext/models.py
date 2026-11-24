@@ -131,3 +131,24 @@ class Resposta(models.Model):
         if kwargs.get("update_fields") is not None:
             kwargs["update_fields"] = set(kwargs["update_fields"]) | {"acertou"}
         return super().save(*args, **kwargs)
+
+
+class ConteudoGerado(models.Model):
+    """Cache do conteúdo gerado pela IA, compartilhado entre os usuários (um registro por tema)."""
+
+    tema_chave = models.CharField(max_length=255, unique=True, editable=False)  # tema sem caixa/acentos
+    tema = models.CharField(max_length=255)
+    resumo = models.TextField()
+    perguntas = models.JSONField()
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-criado_em"]
+        verbose_name = "conteúdo gerado"
+        verbose_name_plural = "conteúdos gerados"
+
+    def __str__(self):
+        return self.tema
+
+    def como_dict(self):
+        return {"tema": self.tema, "resumo": self.resumo, "perguntas": self.perguntas}

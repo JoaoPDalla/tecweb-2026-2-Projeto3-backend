@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -142,6 +143,15 @@ MAILERS = {
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ['sampletext.authentication.TokenUsuarioAuthentication'],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
+    # Limite de requisições (usa o cache do Django). Os valores podem ser trocados no .env.
+    'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.UserRateThrottle'],
+    'DEFAULT_THROTTLE_RATES': {
+        'user': os.getenv('LIMITE_USUARIO', '120/minute'),  # qualquer rota, por usuário
+        'login': os.getenv('LIMITE_LOGIN', '10/minute'),  # login, por IP
+        'ia_hora': os.getenv('LIMITE_IA_HORA', '20/hour'),  # gerações com a IA, por usuário
+        'ia_dia': os.getenv('LIMITE_IA_DIA', '60/day'),  # gerações com a IA, por usuário
+    },
+    'EXCEPTION_HANDLER': 'sampletext.throttling.tratar_excecoes',  # 429 em português
 }
 
 
@@ -154,3 +164,9 @@ CORS_ALLOWED_ORIGINS = [
 
 # Chave da API de IA (lida do .env; nunca escreva a chave no código)
 AI_API_KEY = os.getenv('AI_API_KEY', '')
+
+
+# Nos testes o cache é desligado, para o limite de requisições não vazar de um teste para outro.
+# Os testes de limite (test_limites.py) ligam um cache de verdade só para eles.
+if 'test' in sys.argv:
+    CACHES = {'default': {'BACKEND': 'django.core.cache.backends.dummy.DummyCache'}}
