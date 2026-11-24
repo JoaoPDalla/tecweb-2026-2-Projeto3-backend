@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .authentication import TokenUsuarioAuthentication
+<<<<<<< HEAD
 from .models import Conteudo, Livro, Pergunta, Resposta, TokenUsuario, Usuario
 from .permissions import DonoQuerysetMixin, IsDono
 from .serializers import (
@@ -21,6 +22,11 @@ from .serializers import (
     RespostaSerializer,
     UsuarioSerializer,
 )
+=======
+from .models import TokenUsuario, Usuario
+from .serializers import LoginSerializer, UsuarioSerializer
+from .throttling import LimiteLogin
+>>>>>>> ce18c54a87076f9ba2ad6a6dfdb88a4e9e0cfdc0
 
 
 class LoginView(APIView):
@@ -32,6 +38,7 @@ class LoginView(APIView):
 
     authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = [LimiteLogin]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -74,6 +81,7 @@ class LogoutView(APIView):
 
     def post(self, request):
         request.auth.delete()
+<<<<<<< HEAD
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -170,3 +178,6 @@ class HistoricoRespostasView(ListAPIView):
         if conteudo is not None:
             consulta = consulta.filter(pergunta__conteudo_id=conteudo)
         return consulta
+=======
+        return Response(status=status.HTTP_204_NO_CONTENT)
+>>>>>>> ce18c54a87076f9ba2ad6a6dfdb88a4e9e0cfdc0
