@@ -123,6 +123,8 @@ class Pergunta(models.Model):
     enunciado = models.TextField()
     alternativas = models.JSONField(validators=[validar_alternativas])
     resposta_correta = models.CharField(max_length=1, choices=ALTERNATIVAS)
+    # Identidade das questões públicas da geração; as cópias salvas pertencem ao Conteúdo.
+    chave_geracao = models.CharField(max_length=64, unique=True, null=True, blank=True, editable=False)
     # Conteúdo de origem. Opcional: perguntas antigas ou ainda não salvas não têm conteúdo.
     conteudo = models.ForeignKey(
         Conteudo, related_name="perguntas", null=True, blank=True, on_delete=models.CASCADE
@@ -175,6 +177,7 @@ class Resposta(models.Model):
     pergunta = models.ForeignKey(Pergunta, related_name="respostas", on_delete=models.CASCADE)
     alternativa = models.CharField(max_length=1, choices=ALTERNATIVAS)
     acertou = models.BooleanField(editable=False)
+    chave_envio = models.UUIDField(null=True, blank=True, editable=False)
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -184,6 +187,7 @@ class Resposta(models.Model):
                 condition=models.Q(alternativa__in=list("abcd")),
                 name="resposta_alternativa_valida",
             ),
+            models.UniqueConstraint(fields=["usuario", "chave_envio"], name="resposta_envio_unico_por_usuario"),
         ]
 
     def __str__(self):

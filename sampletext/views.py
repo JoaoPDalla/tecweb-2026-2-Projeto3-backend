@@ -24,6 +24,7 @@ from .serializers import (
 from .models import TokenUsuario, Usuario
 from .serializers import LoginSerializer, UsuarioSerializer
 from .throttling import LimiteLogin
+from .quiz_persistence import registrar_resposta
 
 
 class LoginView(APIView):
@@ -141,10 +142,12 @@ class ResponderView(APIView):
         pergunta = get_object_or_404(Pergunta, pk=pergunta_id)
         dados = ResponderSerializer(data=request.data)
         dados.is_valid(raise_exception=True)
-        resposta = Resposta.objects.create(
-            usuario=request.user, pergunta=pergunta, alternativa=dados.validated_data["alternativa"]
-        )
-        return Response(RespostaSerializer(resposta).data, status=status.HTTP_201_CREATED)
+        alternativa = dados.validated_data["alternativa"]
+        resposta, criada = registrar_resposta(request.user, pergunta, alternativa, dados.validated_data.get("chave_envio"))
+        if resposta.pergunta_id != pergunta.pk or resposta.alternativa != alternativa:
+            return Response({"code": "envio_ja_registrado", "detail": "Esta tentativa já registrou outra resposta. Reinicie o quiz para responder novamente."},
+                            status=status.HTTP_409_CONFLICT)
+        return Response(RespostaSerializer(resposta).data, status=status.HTTP_201_CREATED if criada else status.HTTP_200_OK)
 
 
 class PaginacaoHistorico(LimitOffsetPagination):

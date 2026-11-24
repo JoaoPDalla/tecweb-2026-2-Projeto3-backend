@@ -1,6 +1,12 @@
+import json
+
+from django.db import transaction
 from rest_framework import serializers
 
-from .models import Conteudo, Livro, Resposta, Usuario
+from .models import Conteudo, Livro, Pergunta, Resposta, Usuario
+from .ai.errors import ErroIA
+from .ai.validation import validar_conteudo
+from .quiz_persistence import campos_pergunta
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
@@ -59,9 +65,19 @@ class ConteudoListaSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class PerguntasDoConteudoField(serializers.Field):
+    def to_representation(self, relacao):
+        return [pergunta.para_quiz() for pergunta in relacao.all()]
+
+    def to_internal_value(self, valor):
+        if not isinstance(valor, list):
+            raise serializers.ValidationError("Informe uma lista de perguntas.")
+        return valor
+
+
 class ConteudoSerializer(serializers.ModelSerializer):
     # As perguntas já saem no formato do quiz do frontend (ver Pergunta.para_quiz).
-    perguntas = serializers.SerializerMethodField()
+    perguntas = PerguntasDoConteudoField(required=False)
 
     class Meta:
         model = Conteudo
@@ -76,12 +92,31 @@ class ConteudoSerializer(serializers.ModelSerializer):
             campos["livro"].queryset = Livro.objects.filter(usuario=request.user)
         return campos
 
-    def get_perguntas(self, conteudo):
-        return [pergunta.para_quiz() for pergunta in conteudo.perguntas.all()]
+    def validate(self, attrs):
+        if "perguntas" in attrs:
+            if self.instance is not None:
+                raise serializers.ValidationError({"perguntas": "As perguntas salvas não podem ser substituídas; crie um novo conteúdo."})
+            if attrs["perguntas"]:
+                try:
+                    dados = validar_conteudo(json.dumps({"tema": attrs["tema"], "resumo": attrs["resumo"],
+                                                       "perguntas": attrs["perguntas"]}, ensure_ascii=False), attrs["tema"])
+                except ErroIA:
+                    raise serializers.ValidationError({"perguntas": "Envie dez perguntas válidas, com quatro alternativas e suas explicações."}) from None
+                attrs["perguntas"] = dados["perguntas"]
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        perguntas = validated_data.pop("perguntas", [])
+        conteudo = super().create(validated_data)
+        for pergunta in perguntas:
+            Pergunta.objects.create(conteudo=conteudo, **campos_pergunta(pergunta))
+        return conteudo
 
 
 class ResponderSerializer(serializers.Serializer):
     alternativa = serializers.ChoiceField(choices=["a", "b", "c", "d"])
+    chave_envio = serializers.UUIDField(required=False)
 
 
 class RespostaSerializer(serializers.ModelSerializer):

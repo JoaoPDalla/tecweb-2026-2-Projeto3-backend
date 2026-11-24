@@ -54,10 +54,11 @@ componentes já existentes de cache (#7) e limite de uso (#8): uma geração val
 de geração. Validações avulsas de tema também respeitam a cota de IA. Falhas de
 validação ou do provedor não entram no cache.
 
-A geração não cria Conteúdo vinculado a livro, não atribui ID de Conteúdo e não
-registra respostas de estudantes: essa persistência depende das tarefas #9/#20.
-A ligação das dez perguntas ao quiz
-real permanece na #16 do frontend; o exemplo da #14 continua funcionando.
+A geração grava as perguntas e devolve seus IDs reais como strings, inclusive
+quando o material vem do cache. O cache e as cotas mantêm seu comportamento.
+Ainda não cria Conteúdo vinculado a livro: isso ocorre no salvamento solicitado
+pelo estudante. O quiz pode registrar respostas antes ou depois desse salvamento.
+Consulte o contrato complementar em [persistência do quiz](persistencia-quiz.md).
 
 ## Validação e erros (#13)
 
