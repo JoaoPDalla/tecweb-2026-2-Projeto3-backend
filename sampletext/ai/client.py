@@ -86,6 +86,7 @@ class ClienteIA:
                 timeout_segundos=settings.AI_TIMEOUT_SECONDS,
             )
         except errors.APIError as erro:
+            print("ERRO GEMINI:", getattr(erro, "code", None), str(erro)[:600])
             codigo_http = getattr(erro, "code", None)
             if codigo_http in (401, 403):
                 raise ErroIA("ia_configuracao", "O serviço de IA está indisponível. Contate o responsável.", 503) from None

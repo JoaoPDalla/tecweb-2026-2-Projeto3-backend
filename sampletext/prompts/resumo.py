@@ -35,7 +35,7 @@ def obter_schema_conteudo():
         "properties": {
             "tema": {**texto, "maxLength": 255},
             "resumo": dict(texto),
-            "perguntas": {"type": "array", "minItems": 10, "maxItems": 10, "items": pergunta},
+            "perguntas": {"type": "array", "minItems": 5, "maxItems": 5, "items": pergunta},
         },
     }
 
@@ -52,8 +52,8 @@ Regras do conteúdo:
 - resumo: explique os conceitos principais, apresente um exemplo resolvido e os
   erros comuns. Use Markdown. Quando houver matemática, use LaTeX com $...$ e $$...$$.
   Escape as barras invertidas conforme o JSON exige (por exemplo, "\\frac{1}{2}").
-- perguntas: produza exatamente 10 questões distintas e relacionadas ao resumo,
-  com dificuldade progressiva e IDs únicos pergunta-1 até pergunta-10.
+- perguntas: produza exatamente 5 questões distintas e relacionadas ao resumo,
+  com dificuldade progressiva e IDs únicos pergunta-1 até pergunta-5.
 - Cada pergunta tem prompt (enunciado) e exatamente 4 answers, nesta ordem de IDs:
   a, b, c, d. As quatro alternativas devem ser distintas e plausíveis.
 - Cada answer contém id, text e explanation. Explique especificamente por que

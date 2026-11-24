@@ -55,23 +55,56 @@ class ValidacaoTests(SimpleTestCase):
             with self.subTest(texto=str(texto)[:30]), self.assertRaises(ErroIA):
                 ler_json(texto)
 
-    def test_rejeita_material_com_estrutura_ou_referencias_incorretas(self):
-        for caso in ("extra", "contagem", "id", "enunciado", "topic", "tema", "gabarito", "ids_alternativas", "texto_repetido", "explicacao", "campo_ausente", "unicode"):
+    def test_corrige_detalhes_sem_importancia(self):
+        dados = material()
+        dados["tema"] = "regra da POTENCIA"
+        dados["perguntas"][0]["topic"] = "Outro"
+        dados["perguntas"][1]["id"] = dados["perguntas"][0]["id"]
+        dados["perguntas"][2]["correctAnswerId"] = " A "
+        resultado = validar_conteudo(json.dumps(dados), TEMA)
+        self.assertEqual(resultado["tema"], TEMA)
+        self.assertEqual([q["id"] for q in resultado["perguntas"]], [f"pergunta-{n}" for n in range(1, 11)])
+        self.assertEqual({q["topic"] for q in resultado["perguntas"]}, {TEMA})
+        self.assertEqual(resultado["perguntas"][2]["correctAnswerId"], "a")
+
+    def test_descarta_pergunta_problematica_e_mantem_as_demais(self):
+        for caso in ("contagem", "enunciado", "gabarito", "ids_alternativas", "texto_repetido", "explicacao", "campo_ausente", "unicode"):
             dados = material()
             q = dados["perguntas"][0]
-            if caso == "extra": dados["extra"] = True
-            elif caso == "contagem": dados["perguntas"].pop()
-            elif caso == "id": dados["perguntas"][1]["id"] = q["id"]
+            if caso == "contagem": dados["perguntas"].pop()
             elif caso == "enunciado": dados["perguntas"][1]["prompt"] = q["prompt"]
-            elif caso == "topic": q["topic"] = "Outro"
-            elif caso == "tema": dados["tema"] = "Outro"
             elif caso == "gabarito": q["correctAnswerId"] = "e"
             elif caso == "ids_alternativas": q["answers"][1]["id"] = "a"
             elif caso == "texto_repetido": q["answers"][1]["text"] = q["answers"][0]["text"]
             elif caso == "explicacao": q["answers"][3]["explanation"] = " "
             elif caso == "campo_ausente": del q["answers"][0]["text"]
             elif caso == "unicode": q["answers"][0]["text"] = "\ud800"
-            with self.subTest(caso=caso), self.assertRaises(ErroIA):
+            with self.subTest(caso=caso):
+                resultado = validar_conteudo(json.dumps(dados), TEMA)
+                self.assertEqual(len(resultado["perguntas"]), 9)
+                self.assertEqual([x["id"] for x in resultado["perguntas"]], [f"pergunta-{n}" for n in range(1, 10)])
+
+    def test_aceita_de_cinco_a_dez_perguntas_e_corta_o_excesso(self):
+        dados = material()
+        dados["perguntas"] = dados["perguntas"][:5]
+        self.assertEqual(len(validar_conteudo(json.dumps(dados), TEMA)["perguntas"]), 5)
+        dados["perguntas"] = material()["perguntas"] * 2
+        for n, q in enumerate(dados["perguntas"][10:]):
+            q["prompt"] += f" ({n})"
+        self.assertEqual(len(validar_conteudo(json.dumps(dados), TEMA)["perguntas"]), 10)
+
+    def test_rejeita_material_sem_estrutura_ou_com_poucas_perguntas_validas(self):
+        sem_resumo = material()
+        sem_resumo["resumo"] = " "
+        com_extra = material()
+        com_extra["extra"] = True
+        poucas = material()
+        poucas["perguntas"] = poucas["perguntas"][:4]
+        quebradas = material()
+        for q in quebradas["perguntas"][:6]:
+            q["answers"].pop()
+        for nome, dados in (("sem_resumo", sem_resumo), ("extra", com_extra), ("poucas", poucas), ("quebradas", quebradas)):
+            with self.subTest(caso=nome), self.assertRaises(ErroIA):
                 validar_conteudo(json.dumps(dados), TEMA)
 
     def test_contrato_de_tema_e_prompt_isolam_dado_do_usuario(self):
@@ -216,7 +249,8 @@ class EndpointsTests(APITestCase):
     @patch("sampletext.ai.client._chamar_gemini")
     def test_material_invalido_retorna_erro_padronizado(self, rede):
         ruim = deepcopy(material())
-        ruim["perguntas"][0]["answers"].pop()
+        for pergunta in ruim["perguntas"]:
+            pergunta["answers"].pop()
         rede.side_effect = [resposta_provedor(classificacao()), resposta_provedor(ruim)]
         resposta = self.client.post(reverse("gerar-conteudo"), {"tema": TEMA}, format="json")
         self.assertEqual(resposta.status_code, 502)

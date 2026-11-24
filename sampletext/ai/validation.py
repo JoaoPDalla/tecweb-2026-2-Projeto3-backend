@@ -59,35 +59,65 @@ def validar_resultado_tema(texto, tema):
     return dados
 
 
+MINIMO_PERGUNTAS = 5
+MAXIMO_PERGUNTAS = 10
+
+
+def _pergunta_valida(pergunta, numero, tema):
+    """Normaliza detalhes sem importância e devolve a pergunta pronta.
+
+    Lança ErroIA se a pergunta estiver estruturalmente quebrada (ela será descartada).
+    """
+    _campos(pergunta, ("id", "topic", "prompt", "answers", "correctAnswerId"))
+    _texto(pergunta["prompt"])
+    pergunta["id"] = f"pergunta-{numero}"
+    pergunta["topic"] = tema
+    try:
+        validar_alternativas(pergunta["answers"])
+    except ValidationError:
+        raise invalido() from None
+    alternativas = pergunta["answers"]
+    for alternativa in alternativas:
+        for valor in alternativa.values():
+            _texto(valor)
+    if len({" ".join(a["text"].casefold().split()) for a in alternativas}) != 4:
+        raise invalido()
+    correta = pergunta["correctAnswerId"]
+    if not isinstance(correta, str) or correta.strip().lower() not in {a["id"] for a in alternativas}:
+        raise invalido()
+    pergunta["correctAnswerId"] = correta.strip().lower()
+    return pergunta
+
+
 def validar_conteudo(texto, tema):
+    """Valida o material da IA de forma tolerante.
+
+    Estrutura obrigatória: tema, resumo e perguntas. Para o que a IA costuma errar sem gravidade
+    (tema com outra grafia, ids e topics diferentes, perguntas repetidas ou quebradas, mais de 10
+    perguntas), o material é corrigido ou a pergunta problemática é descartada, e só se rejeita
+    tudo se sobrarem menos de MINIMO_PERGUNTAS perguntas válidas.
+    """
     dados = ler_json(texto)
     _campos(dados, ("tema", "resumo", "perguntas"))
-    _texto(dados["tema"], 255)
     _texto(dados["resumo"])
-    if dados["tema"] != tema:
-        raise invalido()
     perguntas = dados["perguntas"]
-    if not isinstance(perguntas, list) or len(perguntas) != 10:
+    if not isinstance(perguntas, list):
         raise invalido()
-    ids, enunciados = set(), set()
-    for pergunta in perguntas:
-        _campos(pergunta, ("id", "topic", "prompt", "answers", "correctAnswerId"))
-        for campo in ("id", "topic", "prompt", "correctAnswerId"):
-            _texto(pergunta[campo])
-        enunciado = " ".join(pergunta["prompt"].casefold().split())
-        if pergunta["id"] in ids or enunciado in enunciados or pergunta["topic"] != tema:
-            raise invalido()
-        ids.add(pergunta["id"])
-        enunciados.add(enunciado)
+
+    validas, enunciados = [], set()
+    for bruta in perguntas:
         try:
-            validar_alternativas(pergunta["answers"])
-        except ValidationError:
-            raise invalido() from None
-        alternativas = pergunta["answers"]
-        for alternativa in alternativas:
-            for valor in alternativa.values():
-                _texto(valor)
-        textos = {" ".join(a["text"].casefold().split()) for a in alternativas}
-        if len(textos) != 4 or pergunta["correctAnswerId"] not in {a["id"] for a in alternativas}:
-            raise invalido()
-    return deepcopy(dados)
+            pergunta = _pergunta_valida(bruta, len(validas) + 1, tema)
+        except (ErroIA, TypeError, KeyError, AttributeError):
+            continue
+        enunciado = " ".join(pergunta["prompt"].casefold().split())
+        if enunciado in enunciados:
+            continue
+        enunciados.add(enunciado)
+        validas.append(pergunta)
+        if len(validas) == MAXIMO_PERGUNTAS:
+            break
+    if len(validas) < MINIMO_PERGUNTAS:
+        raise invalido()
+
+    return {"tema": tema, "resumo": dados["resumo"], "perguntas": deepcopy(validas)}
